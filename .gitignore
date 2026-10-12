@@ -1,0 +1,27 @@
+# Terraform working directories
+**/.terraform/
+
+# Terraform State
+*.tfstate
+*.tfstate.*
+
+# Saved Terraform plans
+tfplan
+*.tfplan
+
+# Secrets and variables
+*.tfvars
+*.tfvars.json
+.env
+.env.*
+!.env.example
+
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Terraform crash logs
+crash.log
+crash.*.log
