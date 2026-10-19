@@ -1,6 +1,8 @@
 
 terraform {
   backend "s3" {
+    profile = "mws-tfstate"
+
     bucket = "sre-terraform-state-sofmishasof"
     key    = "production-sre-lab/terraform.tfstate"
     region = "ru-central1"
