@@ -1,0 +1,9 @@
+
+---
+- name: Configure Docker on application servers
+  hosts: app
+  become: true
+  gather_facts: true
+
+  roles:
+    - docker_setup
