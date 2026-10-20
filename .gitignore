@@ -25,3 +25,8 @@ tfplan
 # Terraform crash logs
 crash.log
 crash.*.log
+
+#App/.env
+app/.env
+**/__pycache__/
+*.pyc
