@@ -1,0 +1,9 @@
+
+---
+- name: Configure terminal environment
+  hosts: terminal
+  become: false
+  gather_facts: true
+
+  roles:
+    - terminal_setup

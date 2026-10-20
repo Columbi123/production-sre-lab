@@ -1,0 +1,49 @@
+
+---
+- name: Check supported system architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_system == "Linux"
+      - ansible_architecture == "x86_64"
+    fail_msg: "This role currently supports Linux x86_64 only"
+
+- name: Create Oh My Posh directories
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - .local/bin
+    - .config/oh-my-posh
+
+- name: Install Oh My Posh
+  ansible.builtin.get_url:
+    url: "https://cdn.ohmyposh.dev/releases/latest/posh-linux-amd64"
+    dest: "{{ ansible_env.HOME }}/.local/bin/oh-my-posh"
+    mode: "0755"
+    force: false
+
+- name: Deploy Oh My Posh theme
+  ansible.builtin.copy:
+    src: jandedobbeleer.omp.json
+    dest: "{{ ansible_env.HOME }}/.config/oh-my-posh/jandedobbeleer.omp.json"
+    mode: "0644"
+
+- name: Remove previous manual Oh My Posh initialization
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    regexp: '^\s*eval "\$\(oh-my-posh init bash --config .*'
+    state: absent
+    backup: true
+
+- name: Enable Oh My Posh automatically in Bash
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - Oh My Posh"
+    block: |
+      # Oh My Posh
+      if [ -x "$HOME/.local/bin/oh-my-posh" ]; then
+        eval "$("$HOME/.local/bin/oh-my-posh" init bash --config "$HOME/.config/oh-my-posh/jandedobbeleer.omp.json")"
+      fi
+    create: true
+    backup: true

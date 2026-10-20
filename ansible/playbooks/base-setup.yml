@@ -1,0 +1,40 @@
+
+---
+- name: Base configuration for Production SRE Lab
+  hosts: app
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install essential system packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - unzip
+          - jq
+          - ca-certificates
+        state: present
+
+    - name: Create SRE application directory
+      ansible.builtin.file:
+        path: /opt/sre-lab
+        state: directory
+        owner: sre
+        group: sre
+        mode: "0755"
+
+    - name: Display managed server information
+      ansible.builtin.debug:
+        msg:
+          - "Hostname: {{ ansible_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Management: Ansible"
