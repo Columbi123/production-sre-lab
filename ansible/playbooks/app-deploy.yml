@@ -1,0 +1,8 @@
+---
+- name: Deploy Production SRE Lab application
+  hosts: app
+  become: true
+  gather_facts: true
+
+  roles:
+    - app_deploy

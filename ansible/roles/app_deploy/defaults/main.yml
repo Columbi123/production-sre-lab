@@ -1,0 +1,4 @@
+---
+app_deploy_dir: /opt/sre-lab
+app_deploy_user: sre
+app_deploy_source: "{{ playbook_dir }}/../../app"

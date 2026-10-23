@@ -1,0 +1,130 @@
+---
+- name: Verify existing environment file
+  ansible.builtin.stat:
+    path: "{{ app_deploy_dir }}/.env"
+    get_checksum: false
+  register: app_env
+
+- name: Assert environment file is protected
+  ansible.builtin.assert:
+    that:
+      - app_env.stat.exists
+      - app_env.stat.isreg
+      - app_env.stat.mode == '0600'
+    fail_msg: "Protected .env file is missing or insecure"
+
+- name: Create application directories
+  ansible.builtin.file:
+    path: "{{ app_deploy_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_deploy_user }}"
+    mode: '0755'
+  loop:
+    - fastapi
+    - db
+
+- name: Deploy FastAPI source files
+  ansible.builtin.copy:
+    src: "{{ app_deploy_source }}/fastapi/{{ item }}"
+    dest: "{{ app_deploy_dir }}/fastapi/{{ item }}"
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_deploy_user }}"
+    mode: '0644'
+  loop:
+    - main.py
+    - requirements.txt
+    - Dockerfile
+    - .dockerignore
+  register: app_source_copies
+
+- name: Deploy Docker Compose configuration
+  ansible.builtin.copy:
+    src: "{{ app_deploy_source }}/compose.yaml"
+    dest: "{{ app_deploy_dir }}/compose.yaml"
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_deploy_user }}"
+    mode: '0644'
+
+- name: Deploy database schema
+  ansible.builtin.copy:
+    src: "{{ app_deploy_source }}/db/schema.sql"
+    dest: "{{ app_deploy_dir }}/db/schema.sql"
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_deploy_user }}"
+    mode: '0644'
+
+- name: Validate Docker Compose configuration
+  ansible.builtin.command:
+    cmd: docker compose config --quiet
+    chdir: "{{ app_deploy_dir }}"
+  changed_when: false
+
+- name: Check application database schema
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - exec
+      - "-T"
+      - postgres
+      - sh
+      - "-c"
+      - >-
+        psql -v ON_ERROR_STOP=1
+        -U "$POSTGRES_USER"
+        -d "$POSTGRES_DB"
+        -tAc "SELECT to_regclass('public.tasks') IS NOT NULL;"
+    chdir: "{{ app_deploy_dir }}"
+  register: tasks_table_check
+  changed_when: false
+
+- name: Apply initial schema if missing
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - exec
+      - "-T"
+      - postgres
+      - sh
+      - "-c"
+      - >-
+        psql -v ON_ERROR_STOP=1
+        -U "$POSTGRES_USER"
+        -d "$POSTGRES_DB"
+    chdir: "{{ app_deploy_dir }}"
+    stdin: "{{ lookup('file', app_deploy_source ~ '/db/schema.sql') }}"
+  when: tasks_table_check.stdout | trim == 'f'
+
+
+- name: Deploy FastAPI through Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_deploy_dir }}"
+    state: present
+    services:
+      - api
+    dependencies: false
+    build: >-
+      {{
+        'always'
+        if (
+          app_source_copies.results
+          | selectattr('changed')
+          | list
+          | length > 0
+        )
+        else 'policy'
+      }}
+    recreate: auto
+
+- name: Verify application readiness
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8000/ready
+    method: GET
+    status_code: 200
+    return_content: true
+  register: app_readiness
+  retries: 10
+  delay: 3
+  until: app_readiness.status == 200

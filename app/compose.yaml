@@ -5,7 +5,12 @@ services:
   api:
     build:
       context: ./fastapi
-    image: sre-api:0.1.0
+    image: sre-api:0.3.0
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
