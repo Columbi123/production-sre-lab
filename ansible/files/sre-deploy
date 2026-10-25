@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+
+DEPLOY_DIR="/opt/sre-lab"
+REPOSITORY="ghcr.io/columbi123/production-sre-lab"
+
+# Only one argument: a complete Git commit SHA.
+if [[ $# -ne 1 ]] || [[ ! "$1" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: Expected a 40-character Git SHA" >&2
+    exit 2
+fi
+
+IMAGE="${REPOSITORY}:sha-$1"
+
+cd "$DEPLOY_DIR"
+
+# Avoid concurrent deployments.
+exec 9>/run/lock/sre-deploy.lock
+flock -n 9 || {
+    echo "ERROR: Another deployment is running" >&2
+    exit 1
+}
+
+# Verify required deployment files.
+for file in .env .image.env compose.deploy.yaml; do
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: Missing $file" >&2
+        exit 1
+    fi
+done
+
+TMP_DIR="$(mktemp -d /run/sre-deploy.XXXXXX)"
+trap 'rm -rf -- "$TMP_DIR"' EXIT
+
+cp -p .image.env "$TMP_DIR/previous.env"
+
+rollback() {
+    echo "ERROR: Deployment failed. Restoring previous image."
+
+    cp -p "$TMP_DIR/previous.env" .image.env
+
+    docker compose \
+        --env-file .image.env \
+        -f compose.deploy.yaml \
+        up -d --no-deps --no-build --pull never api \
+        || echo "WARNING: Rollback also failed" >&2
+
+    exit 1
+}
+
+# Pull image only if it is not cached locally.
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "Image not cached. GHCR authentication required."
+
+    if ! IFS= read -r TOKEN || [[ -z "$TOKEN" ]]; then
+        echo "ERROR: Missing GHCR token on stdin" >&2
+        exit 1
+    fi
+
+    mkdir -m 700 "$TMP_DIR/auth"
+
+    printf '%s' "$TOKEN" |
+        docker --config "$TMP_DIR/auth" login ghcr.io \
+            -u Columbi123 --password-stdin >/dev/null
+
+    TOKEN=""
+
+    docker --config "$TMP_DIR/auth" pull "$IMAGE"
+fi
+
+# Configure selected image.
+printf 'SRE_API_IMAGE=%s\n' "$IMAGE" > .image.env
+
+docker compose \
+    --env-file .image.env \
+    -f compose.deploy.yaml \
+    config --quiet || rollback
+
+echo "Deploying: $IMAGE"
+
+docker compose \
+    --env-file .image.env \
+    -f compose.deploy.yaml \
+    up -d --no-deps --no-build --pull never api \
+    || rollback
+
+# Verify application readiness.
+for attempt in $(seq 1 20); do
+    if curl -fsS --max-time 3 \
+        http://127.0.0.1:8000/ready >/dev/null; then
+
+        echo "SUCCESS: Application is ready"
+        echo "Deployed image: $IMAGE"
+        exit 0
+    fi
+
+    sleep 2
+done
+
+rollback

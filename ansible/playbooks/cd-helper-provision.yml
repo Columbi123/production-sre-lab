@@ -1,0 +1,41 @@
+
+---
+- name: Provision restricted CD Deployment Helper
+  hosts: app
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Verify deployment user exists
+      ansible.builtin.command:
+        cmd: id -u gha-deploy
+      changed_when: false
+
+    - name: Install Deployment Helper
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/sre-deploy"
+        dest: /usr/local/sbin/sre-deploy
+        owner: root
+        group: root
+        mode: "0755"
+        validate: "/usr/bin/bash -n %s"
+
+    - name: Configure restricted sudo permissions
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/gha-deploy-sre
+        content: |
+          gha-deploy ALL=(root) NOPASSWD: /usr/local/sbin/sre-deploy *
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Verify installed helper syntax
+      ansible.builtin.command:
+        cmd: /usr/bin/bash -n /usr/local/sbin/sre-deploy
+      changed_when: false
+
+    - name: Verify sudoers configuration
+      ansible.builtin.command:
+        cmd: /usr/sbin/visudo -cf /etc/sudoers.d/gha-deploy-sre
+      changed_when: false
