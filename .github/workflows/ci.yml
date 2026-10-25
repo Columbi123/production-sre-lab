@@ -163,7 +163,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/columbii23/production-sre-lab
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=sha,format=long
 
@@ -178,4 +178,5 @@ jobs:
       - name: Verify published image
         run: |
           docker buildx imagetools inspect \
-            "ghcr.io/columbii23/production-sre-lab:sha-${GITHUB_SHA}"
+            "${{ steps.meta.outputs.tags }}"
+
