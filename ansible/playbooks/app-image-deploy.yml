@@ -1,0 +1,92 @@
+---
+- name: Deploy FastAPI from GHCR
+  hosts: app
+  become: true
+  gather_facts: false
+
+  vars:
+    deploy_dir: /opt/sre-lab
+
+  tasks:
+    - name: Verify image reference
+      ansible.builtin.assert:
+        that:
+          - app_image_ref is defined
+          - app_image_ref | length > 0
+        fail_msg: "Set app_image_ref before deployment"
+
+    - name: Check Docker image exists locally
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - inspect
+          - "{{ app_image_ref }}"
+      changed_when: false
+
+    - name: Deploy GHCR Compose configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../app/compose.deploy.yaml"
+        dest: "{{ deploy_dir }}/compose.deploy.yaml"
+        owner: sre
+        group: sre
+        mode: "0644"
+        backup: true
+
+    - name: Save selected image reference
+      ansible.builtin.copy:
+        dest: "{{ deploy_dir }}/.image.env"
+        content: "SRE_API_IMAGE={{ app_image_ref }}\n"
+        owner: sre
+        group: sre
+        mode: "0644"
+        backup: true
+
+    - name: Validate deployment configuration
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --env-file
+          - .image.env
+          - -f
+          - compose.deploy.yaml
+          - config
+          - --quiet
+        chdir: "{{ deploy_dir }}"
+      changed_when: false
+
+    - name: Deploy FastAPI using GHCR image
+      community.docker.docker_compose_v2:
+        project_src: "{{ deploy_dir }}"
+        files:
+          - compose.deploy.yaml
+        env_files:
+          - .image.env
+        state: present
+        services:
+          - api
+        dependencies: false
+        build: never
+        pull: never
+        recreate: auto
+      register: deploy_result
+
+    - name: Verify application readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8000/ready
+        method: GET
+        status_code: 200
+        return_content: true
+      register: app_readiness
+      until: app_readiness.status == 200
+      retries: 12
+      delay: 3
+      changed_when: false
+
+    - name: Deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "Image: {{ app_image_ref }}"
+          - "Readiness: {{ app_readiness.status }}"
+          - "Deployment completed"
