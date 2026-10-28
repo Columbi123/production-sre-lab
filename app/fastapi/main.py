@@ -1,4 +1,5 @@
 import os
+from prometheus_fastapi_instrumentator import Instrumentator
 from datetime import datetime
 
 import psycopg
@@ -13,6 +14,14 @@ app = FastAPI(
     version="0.3.0"
 )
 
+# Prometheus HTTP metrics
+Instrumentator(
+    excluded_handlers=[r"^/metrics$"]
+).instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False
+)
 
 # ---------- DATABASE ----------
 
