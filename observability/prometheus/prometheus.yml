@@ -16,3 +16,21 @@ scrape_configs:
           - "10.10.20.10:9101"
         labels:
           service: "sre-lab-api"
+
+  - job_name: "node-control"
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "127.0.0.1:9100"
+        labels:
+          server: "sre-control"
+
+  - job_name: "node-app"
+    metrics_path: /node-metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "10.10.20.10:9101"
+        labels:
+          server: "sre-app-01"

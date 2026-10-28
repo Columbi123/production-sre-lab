@@ -1,0 +1,63 @@
+---
+- name: Установка Node Exporter на серверы SRE Lab
+  hosts: localhost:app
+  become: true
+
+  tasks:
+    - name: Создать каталог настроек systemd
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-node-exporter.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Установить ограничение сетевого доступа
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/node-exporter/systemd/override.conf"
+        dest: /etc/systemd/system/prometheus-node-exporter.service.d/override.conf
+        owner: root
+        group: root
+        mode: "0644"
+      register: node_override
+      notify: Перезапустить Node Exporter
+
+    - name: Обновить systemd при изменении настроек
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: node_override.changed
+      changed_when: false
+
+    - name: Установить Node Exporter
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Включить и запустить Node Exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-node-exporter
+        enabled: true
+        state: started
+
+    - name: Применить изменения службы
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить доступность системных метрик
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        status_code: 200
+        timeout: 10
+      register: node_metrics
+      until: node_metrics is succeeded
+      retries: 5
+      delay: 2
+      changed_when: false
+
+  handlers:
+    - name: Перезапустить Node Exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-node-exporter
+        daemon_reload: true
+        state: restarted
