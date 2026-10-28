@@ -34,3 +34,13 @@ scrape_configs:
           - "10.10.20.10:9101"
         labels:
           server: "sre-app-01"
+
+  - job_name: "cadvisor"
+    metrics_path: /cadvisor-metrics
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    static_configs:
+      - targets:
+          - "10.10.20.10:9101"
+        labels:
+          server: "sre-app-01"

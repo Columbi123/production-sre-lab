@@ -1,0 +1,46 @@
+---
+- name: Развёртывание мониторинга Docker-контейнеров
+  hosts: app
+  become: true
+
+  tasks:
+    - name: Создать каталог cAdvisor
+      ansible.builtin.file:
+        path: /opt/sre-observability/cadvisor
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Доставить Docker Compose
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/cadvisor/compose.yml"
+        dest: /opt/sre-observability/cadvisor/compose.yml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Проверить Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose -f /opt/sre-observability/cadvisor/compose.yml config --quiet
+      changed_when: false
+
+    - name: Запустить cAdvisor
+      ansible.builtin.command:
+        cmd: docker compose -f /opt/sre-observability/cadvisor/compose.yml up -d --pull missing
+      register: cadvisor_compose
+      changed_when: >-
+        'Created' in cadvisor_compose.stderr or
+        'Recreated' in cadvisor_compose.stderr or
+        'Started' in cadvisor_compose.stderr
+
+    - name: Проверить HTTP-метрики cAdvisor
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/metrics
+        status_code: 200
+        timeout: 10
+      register: cadvisor_ready
+      until: cadvisor_ready is succeeded
+      retries: 12
+      delay: 5
+      changed_when: false
