@@ -1,0 +1,50 @@
+---
+- name: Configure private FastAPI metrics proxy
+  hosts: app
+  become: true
+
+  tasks:
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Disable default site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Restart Nginx
+
+    - name: Install metrics proxy configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/nginx/fastapi-metrics.conf"
+        dest: /etc/nginx/sites-available/fastapi-metrics.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Nginx
+
+    - name: Enable metrics proxy
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/fastapi-metrics.conf
+        dest: /etc/nginx/sites-enabled/fastapi-metrics.conf
+        state: link
+      notify: Restart Nginx
+
+    - name: Validate Nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Ensure Nginx is enabled
+      ansible.builtin.service:
+        name: nginx
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted

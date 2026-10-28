@@ -1,0 +1,71 @@
+---
+- name: Configure Prometheus on sre-control
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Install Prometheus
+      ansible.builtin.apt:
+        name: prometheus
+        state: present
+
+    - name: Create systemd override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Prometheus systemd override
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/prometheus/systemd/override.conf"
+        dest: /etc/systemd/system/prometheus.service.d/override.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart Prometheus
+
+    - name: Install Prometheus configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/prometheus/prometheus.yml"
+        dest: /etc/prometheus/prometheus.yml
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "/usr/bin/promtool check config %s"
+      notify: Restart Prometheus
+
+    - name: Ensure Prometheus is running
+      ansible.builtin.systemd:
+        name: prometheus
+        enabled: true
+        state: started
+
+    - name: Apply pending configuration changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify Prometheus readiness
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9090/-/ready"
+        method: GET
+        status_code: 200
+        timeout: 5
+      register: prometheus_ready
+      until: prometheus_ready is succeeded
+      retries: 5
+      delay: 2
+      changed_when: false
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart Prometheus
+      ansible.builtin.systemd:
+        name: prometheus
+        state: restarted
