@@ -1,0 +1,36 @@
+services:
+  postgres-exporter:
+    image: ghcr.io/prometheus-community/postgres-exporter:v0.20.1
+    container_name: sre-lab-postgres-exporter
+    restart: unless-stopped
+
+    # Подключение к PostgreSQL внутри Docker Network
+    environment:
+      DATA_SOURCE_URI: "sre-lab-postgres-1:5432/sredb?sslmode=disable"
+      DATA_SOURCE_USER: "sre_exporter"
+      DATA_SOURCE_PASS_FILE: "/run/secrets/pg_exporter_password"
+
+    secrets:
+      - pg_exporter_password
+
+    # Экспортер доступен только локально на sre-app-01
+    ports:
+      - "127.0.0.1:9187:9187"
+
+    networks:
+      - sre_lab
+
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+secrets:
+  pg_exporter_password:
+    file: /etc/sre-lab/secrets/pg_exporter_password
+
+networks:
+  sre_lab:
+    external: true
+    name: sre-lab_default

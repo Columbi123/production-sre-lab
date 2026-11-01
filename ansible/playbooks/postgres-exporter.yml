@@ -1,0 +1,79 @@
+---
+- name: Развёртывание мониторинга PostgreSQL
+  hosts: app
+  become: true
+
+  tasks:
+    - name: Проверить наличие секрета PostgreSQL Exporter
+      ansible.builtin.stat:
+        path: /etc/sre-lab/secrets/pg_exporter_password
+      register: exporter_secret
+
+    - name: Убедиться, что секрет существует
+      ansible.builtin.assert:
+        that:
+          - exporter_secret.stat.exists
+          - exporter_secret.stat.isreg
+        fail_msg: "Отсутствует файл пароля PostgreSQL Exporter"
+
+    - name: Создать каталог PostgreSQL Exporter
+      ansible.builtin.file:
+        path: /opt/sre-lab/postgres-exporter
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Доставить Docker Compose
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/postgres-exporter/compose.yml"
+        dest: /opt/sre-lab/postgres-exporter/compose.yml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Проверить конфигурацию Docker Compose
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - /opt/sre-lab/postgres-exporter/compose.yml
+          - config
+          - --quiet
+      changed_when: false
+
+    - name: Запустить PostgreSQL Exporter
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -p
+          - sre-lab-postgres-exporter
+          - -f
+          - /opt/sre-lab/postgres-exporter/compose.yml
+          - up
+          - -d
+      register: compose_result
+      changed_when: >-
+        'Created' in compose_result.stderr or
+        'Started' in compose_result.stderr or
+        'Recreated' in compose_result.stderr
+
+    - name: Проверить HTTP-метрики Exporter
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9187/metrics
+        status_code: 200
+        return_content: true
+        timeout: 10
+      register: exporter_metrics
+      retries: 10
+      delay: 3
+      until: exporter_metrics.status | default(0) == 200
+
+    - name: Проверить доступность PostgreSQL
+      ansible.builtin.assert:
+        that:
+          - "'pg_up 1' in exporter_metrics.content"
+        fail_msg: "Exporter работает, но подключение к PostgreSQL не подтверждено"
+        success_msg: "PostgreSQL Exporter работает и подключён к базе"

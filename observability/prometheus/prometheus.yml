@@ -44,3 +44,15 @@ scrape_configs:
           - "10.10.20.10:9101"
         labels:
           server: "sre-app-01"
+
+
+  # Мониторинг базы данных PostgreSQL
+  - job_name: "postgresql"
+    metrics_path: /postgres-metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets:
+          - "10.10.20.10:9101"
+        labels:
+          server: "sre-app-01"
