@@ -1,0 +1,74 @@
+---
+- name: Provision Grafana datasource and SRE Lab dashboard
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Create Grafana provisioning and dashboards directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /etc/grafana/provisioning/datasources
+        - /etc/grafana/provisioning/dashboards
+        - /var/lib/grafana/dashboards
+        - /var/lib/grafana/dashboards/sre-lab
+
+    - name: Configure provisioned Prometheus datasource
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/grafana/provisioning/datasources/prometheus.yml"
+        dest: /etc/grafana/provisioning/datasources/sre-lab-prometheus.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Grafana
+
+    - name: Configure file-based dashboard provider
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/grafana/provisioning/dashboards/provider.yml"
+        dest: /etc/grafana/provisioning/dashboards/sre-lab.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Grafana
+
+    - name: Install Infrastructure Overview dashboard
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/grafana/dashboards/infrastructure-overview.json"
+        dest: /var/lib/grafana/dashboards/sre-lab/infrastructure-overview.json
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Grafana
+
+    - name: Ensure Grafana is running
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        enabled: true
+        state: started
+
+    - name: Apply provisioning changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify Grafana health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+        method: GET
+        status_code: 200
+        timeout: 5
+      register: grafana_health
+      retries: 30
+      delay: 3
+      until: grafana_health.status | default(0) == 200
+      changed_when: false
+
+  handlers:
+    - name: Restart Grafana
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        state: restarted

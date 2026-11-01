@@ -1,0 +1,93 @@
+
+---
+- name: Развернуть Grafana на sre-control
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Установить системные зависимости
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог ключей APT
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Установить проверенный GPG-ключ Grafana
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/grafana/keys/grafana.gpg"
+        dest: /etc/apt/keyrings/grafana.gpg
+        owner: root
+        group: root
+        mode: "0644"
+ 
+    - name: Подключить зеркало Grafana от Selectel
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/grafana.list
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/grafana.gpg] https://mirror.selectel.ru/3rd-party/grafana stable main
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Установить Grafana OSS
+      ansible.builtin.apt:
+        name: grafana
+        state: present
+        update_cache: true
+
+    - name: Создать каталог настроек systemd
+      ansible.builtin.file:
+        path: /etc/systemd/system/grafana-server.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Ограничить доступ к Grafana localhost
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/grafana-server.service.d/override.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Service]
+          Environment="GF_SERVER_HTTP_ADDR=127.0.0.1"
+          Environment="GF_SERVER_HTTP_PORT=3000"
+          Environment="GF_USERS_ALLOW_SIGN_UP=false"
+      notify: Перезапустить Grafana
+
+    - name: Включить и запустить Grafana
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Применить изменения конфигурации
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить готовность Grafana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+        method: GET
+        status_code: 200
+        timeout: 5
+      register: grafana_health
+      retries: 15
+      delay: 3
+      until: grafana_health.status | default(0) == 200
+      changed_when: false
+
+  handlers:
+    - name: Перезапустить Grafana
+      ansible.builtin.systemd_service:
+        name: grafana-server
+        state: restarted
+        daemon_reload: true
