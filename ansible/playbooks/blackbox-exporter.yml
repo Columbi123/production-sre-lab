@@ -1,0 +1,54 @@
+---
+- name: Развернуть Blackbox Exporter на sre-control
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Установить Blackbox Exporter
+      ansible.builtin.apt:
+        name: prometheus-blackbox-exporter
+        state: present
+
+    - name: Создать каталог systemd override
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-blackbox-exporter.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Установить конфигурацию Blackbox
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/blackbox/blackbox.yml"
+        dest: /etc/prometheus/blackbox.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезапустить Blackbox Exporter
+
+    - name: Ограничить прослушивание локальным интерфейсом
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/blackbox/systemd/override.conf"
+        dest: /etc/systemd/system/prometheus-blackbox-exporter.service.d/override.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезапустить Blackbox Exporter
+
+    - name: Проверить конфигурацию Blackbox
+      ansible.builtin.command:
+        cmd: /usr/bin/prometheus-blackbox-exporter --config.file=/etc/prometheus/blackbox.yml --config.check
+      changed_when: false
+
+    - name: Обеспечить запуск Blackbox Exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-blackbox-exporter
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: Перезапустить Blackbox Exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-blackbox-exporter
+        state: restarted
+        daemon_reload: true
