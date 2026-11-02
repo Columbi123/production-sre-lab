@@ -1,0 +1,70 @@
+
+---
+- name: Настроить тестовый Pipeline Logstash
+  hosts: logging
+  become: true
+
+  tasks:
+    - name: Создать каталог сертификатов Logstash
+      ansible.builtin.file:
+        path: /etc/logstash/certs
+        state: directory
+        owner: root
+        group: logstash
+        mode: "0750"
+
+    - name: Скопировать CA-сертификат Elasticsearch
+      ansible.builtin.copy:
+        src: /etc/elasticsearch/certs/http_ca.crt
+        dest: /etc/logstash/certs/http_ca.crt
+        remote_src: true
+        owner: root
+        group: logstash
+        mode: "0640"
+
+    - name: Создать каталог тестовых событий
+      ansible.builtin.file:
+        path: /var/log/sre-lab
+        state: directory
+        owner: logstash
+        group: logstash
+        mode: "0750"
+
+    - name: Подготовить тестовый JSONL-файл
+      ansible.builtin.copy:
+        content: ""
+        dest: /var/log/sre-lab/test-events.jsonl
+        force: false
+        owner: logstash
+        group: logstash
+        mode: "0640"
+
+    - name: Развернуть тестовый Pipeline
+      ansible.builtin.copy:
+        dest: /etc/logstash/conf.d/10-sre-lab-test.conf
+        owner: root
+        group: logstash
+        mode: "0640"
+        content: |
+          input {
+            file {
+              id => "sre_lab_test_file"
+              path => "/var/log/sre-lab/test-events.jsonl"
+              start_position => "beginning"
+              sincedb_path => "/var/lib/logstash/sre-lab-test.sincedb"
+              codec => json
+            }
+          }
+
+          output {
+            elasticsearch {
+              id => "sre_lab_test_elasticsearch"
+              hosts => ["https://127.0.0.1:9200"]
+              api_key => "${LS_ES_API_KEY}"
+              ssl_enabled => true
+              ssl_certificate_authorities => ["/etc/logstash/certs/http_ca.crt"]
+              index => "sre-lab-test-%{+YYYY.MM.dd}"
+              data_stream => "false"
+              manage_template => false
+            }
+          }

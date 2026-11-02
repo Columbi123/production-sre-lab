@@ -1,0 +1,201 @@
+
+---
+- name: Настроить TLS Beats Input для Production SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Проверить существующий тестовый pipeline
+      ansible.builtin.stat:
+        path: /etc/logstash/conf.d/10-sre-lab-test.conf
+      register: test_pipeline
+
+    - name: Убедиться, что тестовый pipeline существует
+      ansible.builtin.assert:
+        that:
+          - test_pipeline.stat.exists
+          - test_pipeline.stat.isreg
+        fail_msg: "Тестовый pipeline не найден"
+
+    - name: Создать отдельный Beats pipeline
+      ansible.builtin.copy:
+        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
+        owner: root
+        group: logstash
+        mode: "0640"
+        backup: true
+        content: |
+          input {
+            beats {
+              id => "sre_lab_beats"
+              host => "10.10.20.20"
+              port => 5044
+
+              ssl_enabled => true
+              ssl_certificate => "/etc/logstash/certs/logstash.crt"
+              ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
+              ssl_client_authentication => "none"
+            }
+          }
+
+          output {
+            elasticsearch {
+              id => "sre_beats_elasticsearch"
+
+              hosts => ["https://127.0.0.1:9200"]
+
+              api_key => "${LS_ES_API_KEY}"
+
+              ssl_enabled => true
+              ssl_certificate_authorities => [
+                "/etc/logstash/certs/http_ca.crt"
+              ]
+              ssl_verification_mode => "full"
+
+              data_stream => false
+              ilm_enabled => false
+
+              index => "sre-lab-beats-%{+YYYY.MM.dd}"
+
+            }
+          }
+
+
+    - name: Разделить тестовый и Beats pipelines
+      ansible.builtin.copy:
+        dest: /etc/logstash/pipelines.yml
+        owner: root
+        group: logstash
+        mode: "0644"
+        backup: true
+        content: |
+          - pipeline.id: main
+            path.config: "/etc/logstash/conf.d/10-sre-lab-test.conf"
+            pipeline.workers: 1
+
+          - pipeline.id: beats-ingest
+            path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
+            pipeline.workers: 1
+
+- name: Настроить TLS Beats Input для Production SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Проверить существующий тестовый pipeline
+      ansible.builtin.stat:
+        path: /etc/logstash/conf.d/10-sre-lab-test.conf
+      register: test_pipeline
+
+    - name: Убедиться, что тестовый pipeline существует
+      ansible.builtin.assert:
+        that:
+          - test_pipeline.stat.exists
+          - test_pipeline.stat.isreg
+        fail_msg: "Тестовый pipeline не найден"
+
+    - name: Создать отдельный Beats pipeline
+      ansible.builtin.copy:
+        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
+        owner: root
+        group: logstash
+        mode: "0640"
+        backup: true
+        content: |
+          input {
+            beats {
+              id => "sre_lab_beats"
+              host => "10.10.20.20"
+              port => 5044
+
+              ssl_enabled => true
+              ssl_certificate => "/etc/logstash/certs/logstash.crt"
+              ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
+              ssl_client_authentication => "none"
+            }
+          }
+
+          output {
+            stdout {
+              codec => json_lines
+            }
+          }
+
+    - name: Разделить тестовый и Beats pipelines
+      ansible.builtin.copy:
+        dest: /etc/logstash/pipelines.yml
+        owner: root
+        group: logstash
+        mode: "0644"
+        backup: true
+        content: |
+          - pipeline.id: main
+            path.config: "/etc/logstash/conf.d/10-sre-lab-test.conf"
+            pipeline.workers: 1
+
+          - pipeline.id: beats-ingest
+            path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
+            pipeline.workers: 1
+
+- name: Настроить TLS Beats Input для Production SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Проверить существующий тестовый pipeline
+      ansible.builtin.stat:
+        path: /etc/logstash/conf.d/10-sre-lab-test.conf
+      register: test_pipeline
+
+    - name: Убедиться, что тестовый pipeline существует
+      ansible.builtin.assert:
+        that:
+          - test_pipeline.stat.exists
+          - test_pipeline.stat.isreg
+        fail_msg: "Тестовый pipeline не найден"
+
+    - name: Создать отдельный Beats pipeline
+      ansible.builtin.copy:
+        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
+        owner: root
+        group: logstash
+        mode: "0640"
+        backup: true
+        content: |
+          input {
+            beats {
+              id => "sre_lab_beats"
+              host => "10.10.20.20"
+              port => 5044
+
+              ssl_enabled => true
+              ssl_certificate => "/etc/logstash/certs/logstash.crt"
+              ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
+              ssl_client_authentication => "none"
+            }
+          }
+
+          output {
+            stdout {
+              codec => json_lines
+            }
+          }
+
+    - name: Разделить тестовый и Beats pipelines
+      ansible.builtin.copy:
+        dest: /etc/logstash/pipelines.yml
+        owner: root
+        group: logstash
+        mode: "0644"
+        backup: true
+        content: |
+          - pipeline.id: main
+            path.config: "/etc/logstash/conf.d/10-sre-lab-test.conf"
+            pipeline.workers: 1
+
+          - pipeline.id: beats-ingest
+            path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
+            pipeline.workers: 1

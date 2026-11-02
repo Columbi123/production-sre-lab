@@ -1,0 +1,87 @@
+
+---
+- name: Настроить Elasticsearch для Production SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Удалить конфликтующий параметр Cluster Bootstrap
+      ansible.builtin.lineinfile:
+        path: /etc/elasticsearch/elasticsearch.yml
+        regexp: '^\s*cluster\.initial_master_nodes\s*:'
+        state: absent
+        backup: true
+      notify: Перезапустить Elasticsearch
+
+    - name: Настроить одиночный узел Elasticsearch
+      ansible.builtin.blockinfile:
+        path: /etc/elasticsearch/elasticsearch.yml
+        marker: "# {mark} ANSIBLE MANAGED SRE LAB"
+        backup: true
+        block: |
+          cluster.name: sre-lab-logs
+          node.name: sre-logging-01
+          discovery.type: single-node
+
+          # HTTP API — только localhost
+          http.bind_host: "127.0.0.1"
+          http.publish_host: "127.0.0.1"
+
+          # Transport — только localhost
+          transport.bind_host: "127.0.0.1"
+          transport.publish_host: "127.0.0.1"
+      notify: Перезапустить Elasticsearch
+
+    - name: Настроить JVM Heap 4 ГБ
+      ansible.builtin.copy:
+        dest: /etc/elasticsearch/jvm.options.d/90-sre-lab-heap.options
+        content: |
+          -Xms4g
+          -Xmx4g
+        owner: root
+        group: elasticsearch
+        mode: "0644"
+      notify: Перезапустить Elasticsearch
+
+    - name: Включить и запустить Elasticsearch
+      ansible.builtin.systemd_service:
+        name: elasticsearch
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Применить изменения Elasticsearch
+      ansible.builtin.meta: flush_handlers
+
+    - name: Дождаться запуска HTTPS API
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 9200
+        timeout: 180
+
+    - name: Проверить TLS и требование аутентификации
+      ansible.builtin.uri:
+        url: https://127.0.0.1:9200/
+        method: GET
+        ca_path: /etc/elasticsearch/certs/http_ca.crt
+        status_code: 401
+        return_content: false
+      register: elastic_health
+      retries: 10
+      delay: 5
+      until: elastic_health.status | default(0) == 401
+
+    - name: Вывести результат
+      ansible.builtin.debug:
+        msg: >-
+          Elasticsearch запущен.
+          HTTPS работает.
+          Аутентификация обязательна.
+
+  handlers:
+    - name: Перезапустить Elasticsearch
+      ansible.builtin.systemd_service:
+        name: elasticsearch
+        state: restarted
+        daemon_reload: true

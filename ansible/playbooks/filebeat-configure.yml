@@ -1,0 +1,124 @@
+
+---
+- name: Configure Filebeat for Production SRE Lab
+  hosts: sre-app-01
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Сохранить исходную конфигурацию Filebeat
+      ansible.builtin.copy:
+        src: /etc/filebeat/filebeat.yml
+        dest: /etc/filebeat/filebeat.yml.pre-sre-lab
+        remote_src: true
+        force: false
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Получить публичный CA с logging-сервера
+      ansible.builtin.slurp:
+        src: /etc/logstash/certs/ca.crt
+      delegate_to: sre-logging-01
+      register: logstash_ca
+
+    - name: Создать каталог сертификатов Filebeat
+      ansible.builtin.file:
+        path: /etc/filebeat/certs
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Установить публичный сертификат CA
+      ansible.builtin.copy:
+        content: "{{ logstash_ca.content | b64decode }}"
+        dest: /etc/filebeat/certs/ca.crt
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Filebeat
+
+    - name: Создать каталог тестовых событий
+      ansible.builtin.file:
+        path: /var/log/sre-lab
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Настроить Filebeat inputs и Logstash output
+      ansible.builtin.copy:
+        dest: /etc/filebeat/filebeat.yml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          filebeat.inputs:
+            - type: filestream
+              id: sre-lab-docker
+              enabled: true
+              paths:
+                - /var/lib/docker/containers/*/*-json.log
+              parsers:
+                - container:
+                    format: docker
+              tags: ["sre-lab", "docker"]
+
+            - type: filestream
+              id: sre-lab-nginx-access
+              enabled: true
+              paths:
+                - /var/log/nginx/access.log
+              tags: ["sre-lab", "nginx", "access"]
+
+            - type: filestream
+              id: sre-lab-nginx-error
+              enabled: true
+              paths:
+                - /var/log/nginx/error.log
+              tags: ["sre-lab", "nginx", "error"]
+
+            - type: filestream
+              id: sre-lab-test
+              enabled: true
+              paths:
+                - /var/log/sre-lab/filebeat-test.log
+              tags: ["sre-lab", "test"]
+
+          processors:
+            - add_host_metadata: ~
+            - add_docker_metadata:
+                host: "unix:///var/run/docker.sock"
+
+          output.logstash:
+            hosts: ["10.10.20.20:5044"]
+            ssl.enabled: true
+            ssl.certificate_authorities:
+              - /etc/filebeat/certs/ca.crt
+            ssl.verification_mode: full
+
+    - name: Проверить синтаксис Filebeat
+      ansible.builtin.command:
+        cmd: filebeat test config -c /etc/filebeat/filebeat.yml
+      changed_when: false
+
+    - name: Проверить TLS-подключение к Logstash
+      ansible.builtin.command:
+        cmd: filebeat test output -c /etc/filebeat/filebeat.yml
+      changed_when: false
+
+    - name: Включить и запустить Filebeat
+      ansible.builtin.systemd_service:
+        name: filebeat
+        enabled: true
+        state: started
+
+    - name: Применить изменения Filebeat
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: Restart Filebeat
+      ansible.builtin.systemd_service:
+        name: filebeat
+        state: restarted

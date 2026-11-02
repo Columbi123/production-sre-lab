@@ -1,0 +1,78 @@
+
+---
+- name: Установить Elasticsearch на sre-logging-01
+  hosts: logging
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Установить системные зависимости
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог ключей APT
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Скачать официальный GPG-ключ Elastic
+      ansible.builtin.get_url:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        dest: /etc/apt/keyrings/elasticsearch.asc
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Получить отпечаток GPG-ключа
+      ansible.builtin.command:
+        argv:
+          - gpg
+          - --batch
+          - --show-keys
+          - --with-colons
+          - /etc/apt/keyrings/elasticsearch.asc
+      register: elastic_signing_key
+      changed_when: false
+
+    - name: Проверить подлинность ключа Elastic
+      ansible.builtin.assert:
+        that:
+          - "'46095ACC8548582C1A2699A9D27D666CD88E42B4' in elastic_signing_key.stdout"
+        fail_msg: "Отпечаток GPG-ключа не совпадает!"
+        success_msg: "GPG-ключ Elastic проверен"
+
+    - name: Подключить репозиторий Elastic 9.x
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/elastic-9.x.list
+        content: "deb [signed-by=/etc/apt/keyrings/elasticsearch.asc] https://artifacts.elastic.co/packages/9.x/apt stable main\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Установить Elasticsearch
+      ansible.builtin.apt:
+        name: elasticsearch
+        state: present
+        update_cache: true
+
+    - name: Проверить установленную версию
+      ansible.builtin.command:
+        argv:
+          - dpkg-query
+          - -W
+          - elasticsearch
+      register: elastic_version
+      changed_when: false
+
+    - name: Вывести результат установки
+      ansible.builtin.debug:
+        msg: "{{ elastic_version.stdout }}"

@@ -1,0 +1,79 @@
+
+---
+- name: Установить Logstash для Production SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Обновить индекс APT
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Определить доступную версию Logstash
+      ansible.builtin.shell: >-
+        apt-cache policy logstash |
+        awk '/Candidate:/ {print $2}'
+      register: logstash_candidate
+      changed_when: false
+
+    - name: Проверить версию Logstash 9.5.6
+      ansible.builtin.assert:
+        that:
+          - logstash_candidate.stdout is match('^(1:)?9\.5\.6([-.].*)?$')
+        fail_msg: >-
+          Ожидалась версия Logstash 9.5.6,
+          доступна: {{ logstash_candidate.stdout }}
+        success_msg: "Версия Logstash 9.5.6 подтверждена"
+
+    - name: Установить Logstash 9.5.6
+      ansible.builtin.apt:
+        name: "logstash={{ logstash_candidate.stdout }}"
+        state: present
+
+    - name: Настроить минимальный JVM Heap 2 ГБ
+      ansible.builtin.lineinfile:
+        path: /etc/logstash/jvm.options
+        regexp: '^-Xms'
+        line: '-Xms2g'
+        backup: true
+
+    - name: Настроить максимальный JVM Heap 2 ГБ
+      ansible.builtin.lineinfile:
+        path: /etc/logstash/jvm.options
+        regexp: '^-Xmx'
+        line: '-Xmx2g'
+        backup: true
+
+    - name: Ограничить Logstash API localhost
+      ansible.builtin.lineinfile:
+        path: /etc/logstash/logstash.yml
+        regexp: '^\s*#?\s*api\.http\.host\s*:'
+        line: 'api.http.host: "127.0.0.1"'
+        backup: true
+
+    - name: Зафиксировать порт Logstash API
+      ansible.builtin.lineinfile:
+        path: /etc/logstash/logstash.yml
+        regexp: '^\s*#?\s*api\.http\.port\s*:'
+        line: 'api.http.port: 9600'
+
+    - name: Проверить установленную версию пакета
+      ansible.builtin.command:
+        argv:
+          - dpkg-query
+          - -W
+          - '-f=${Version}'
+          - logstash
+      register: logstash_version
+      changed_when: false
+
+    - name: Вывести результат установки
+      ansible.builtin.debug:
+        msg: >-
+          Logstash установлен.
+          Версия: {{ logstash_version.stdout }}.
+          JVM Heap: 2 ГБ.
+          API: 127.0.0.1:9600.
+          Сервис пока не запущен.
