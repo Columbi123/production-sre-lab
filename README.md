@@ -1,64 +1,177 @@
 # Production SRE Lab
 
-**Cloud infrastructure and Site Reliability Engineering portfolio project.**
+**Облачная лаборатория Site Reliability Engineering — от инфраструктуры как кода до мониторинга, управления инцидентами и автоматизации эксплуатации.**
 
-A production-inspired infrastructure lab built on MWS Cloud Platform to practice Infrastructure as Code, automation, container orchestration, monitoring, incident response, and reliability engineering.
+![Статус](https://img.shields.io/badge/Статус-Активная_разработка-blue)
+![Roadmap](https://img.shields.io/badge/Roadmap-5%2F8-2ea44f)
+![Cloud](https://img.shields.io/badge/Cloud-MWS_Cloud-555555)
+![IaC](https://img.shields.io/badge/IaC-Terraform_%2B_Ansible-844FBA)
 
-## Technology Stack
+## О проекте
 
-- **Cloud:** MWS Cloud Platform
-- **Infrastructure as Code:** Terraform
-- **Configuration Management:** Ansible (planned)
-- **Containers:** Docker (planned)
-- **Orchestration:** Kubernetes (planned)
-- **Monitoring:** Prometheus, Grafana, Alertmanager (planned)
-- **Version Control:** Git and GitHub
-- **Operating System:** Ubuntu Server 24.04 LTS
+**Production SRE Lab** — мой самостоятельный pet-проект, в котором я создаю и эксплуатирую инфраструктуру, приближенную к реальным задачам SRE/DevOps-инженера.
 
-## Current Infrastructure
+Проект развёрнут на **MWS Cloud Platform** и объединяет облачные сети, автоматизацию конфигураций, контейнеризированное Python-приложение, CI/CD, мониторинг и централизованное логирование.
 
-| Component | Description | Status |
+Моя цель — не просто запустить набор технологий, а разобраться в их взаимодействии, научиться диагностировать неисправности, автоматизировать рутинные операции и повышать надёжность сервисов.
+
+**Текущий прогресс:** реализована основа первых пяти этапов из восьми. Пятый этап (Observability) находится на финальной отладке. Впереди — Kubernetes, Reliability & Incidents и AI SRE Assistant.
+
+## Архитектура инфраструктуры
+
+В облаке развёрнуты три виртуальные машины с разделением ответственности:
+
+| Виртуальная машина | Назначение | Основные компоненты |
 |---|---|---|
-| VPC | `sre-lab-vpc` | Deployed, imported into Terraform |
-| Management Subnet | `10.10.10.0/24` | Deployed, imported into Terraform |
-| Control VM | `sre-control` | Deployed, referenced as a Data Source |
-| Terraform State | MWS Object Storage | Configured |
-| Git Repository | GitHub | Configured |
-| Application Infrastructure | To be provisioned | Planned |
-| Monitoring Infrastructure | Prometheus and Grafana | Planned |
+| `sre-control` | Управление инфраструктурой и мониторинг | Terraform, Ansible, Prometheus, Grafana |
+| `sre-app-01` | Сервер приложения | FastAPI, PostgreSQL, Nginx, Docker Compose, Exporters, Filebeat |
+| `sre-logging-01` | Централизованное логирование | Elasticsearch, Logstash, Kibana |
 
-## Project Roadmap
+Виртуальные машины объединены частной сетью MWS Cloud. Доступ и сетевые правила ограничены, управление выполняется по SSH.
 
-- [x] Set up MWS Cloud Platform
-- [x] Configure VPC and management subnet
-- [x] Deploy management VM
-- [x] Install Terraform and Ansible
-- [x] Configure remote Terraform State
-- [x] Import existing network resources into Terraform
-- [x] Initialize GitHub repository
-- [ ] Automate VM provisioning with Terraform
-- [ ] Configure servers with Ansible
-- [ ] Deploy containerized application
-- [ ] Configure Kubernetes
-- [ ] Implement monitoring and alerting
-- [ ] Introduce CI/CD workflows
-- [ ] Implement SRE reliability tests and incident simulations
+### Принцип работы
 
-## Repository Structure
+**Развёртывание и автоматизация**
 
-- `terraform/` — Infrastructure as Code
-- `ansible/` — Configuration management
-- `docs/` — Technical documentation and architecture
+GitHub → GitHub Actions → Docker / CI/CD
 
-## Security and Operational Notes
+Terraform → MWS Cloud → Виртуальные машины и сети
 
-- Secrets and private SSH keys must not be committed to Git.
-- Terraform State is stored remotely in MWS Object Storage with versioning enabled.
-- S3 State Locking is currently disabled due to an observed compatibility issue. Terraform operations must be serialized until a reliable locking mechanism is implemented.
-- Infrastructure changes must be reviewed with `terraform plan` before applying.
+Ansible → Конфигурация серверов и сервисов
 
-## Project Goal
+**Метрики**
 
-Build a reproducible infrastructure environment demonstrating practical SRE/DevOps competencies, including automation, observability, incident management, and infrastructure reliability.
+FastAPI / PostgreSQL / Linux / Docker → Exporters → Prometheus → Grafana
 
-**Status:** Active development — Cloud Foundation completed.
+**Логи**
+
+FastAPI / Docker / Nginx → Filebeat → Logstash → Elasticsearch → Kibana
+
+*В цепочке логирования настроены сбор событий и защищённое соединение Filebeat с Logstash. Окончательная индексация событий Beats в Elasticsearch находится на стадии завершения.*
+
+## Технологический стек
+
+| Категория | Инструменты | Назначение |
+|---|---|---|
+| Облачная инфраструктура | MWS Cloud Platform | Вычислительные ресурсы, VPC, подсети и сетевые политики |
+| Infrastructure as Code | Terraform | Декларативное управление облачной инфраструктурой |
+| Configuration Management | Ansible | Настройка серверов, установка сервисов, роли и playbooks |
+| Контейнеризация | Docker, Docker Compose | Изоляция и запуск компонентов приложения |
+| Backend | Python, FastAPI | REST API с CRUD-операциями |
+| База данных | PostgreSQL | Постоянное хранение данных приложения |
+| Reverse Proxy | Nginx | HTTP-проксирование и доступ к сервису |
+| CI/CD | GitHub Actions, GitHub Container Registry | Автоматизированные проверки и работа с образами |
+| Мониторинг | Prometheus, Grafana | Сбор, хранение и визуализация метрик |
+| Экспортёры | Node Exporter, cAdvisor, Blackbox Exporter, PostgreSQL Exporter и другие | Метрики инфраструктуры, контейнеров и приложения |
+| Логирование | Elasticsearch, Logstash, Kibana, Filebeat | Сбор, обработка, индексация и анализ событий |
+| ОС | Ubuntu Server 24.04 LTS | Серверная платформа |
+
+## Что уже реализовано
+
+### Облачная инфраструктура
+
+- Создана инфраструктура на MWS Cloud Platform.
+- Настроены VPC, подсети и правила сетевого доступа.
+- Развёрнуты три виртуальные машины.
+- Подготовлена удалённая инфраструктура хранения Terraform State.
+- Реализовано управление облачными ресурсами через Terraform.
+
+### Автоматизация
+
+- Настроен Ansible Inventory.
+- Разработаны playbooks для установки и конфигурации сервисов.
+- Используются повторно применяемые Ansible-роли.
+- Проверена идемпотентность конфигураций.
+- Настроено SSH-подключение между управляющим и рабочими серверами.
+
+### Приложение и CI/CD
+
+- Разработано REST API на Python/FastAPI.
+- Реализованы CRUD-операции с PostgreSQL.
+- Настроены Dockerfile и Docker Compose.
+- Созданы автоматизированные проверки приложения.
+- Настроены GitHub Actions и работа с контейнерными образами.
+- Реализованы проверки состояния API.
+
+### Monitoring & Observability
+
+- Развёрнут Prometheus.
+- Настроен сбор метрик с семи targets.
+- Подключены экспортёры инфраструктуры, контейнеров и приложения.
+- Установлена Grafana и создан Infrastructure Overview Dashboard.
+- Развёрнуты Elasticsearch, Logstash и Kibana.
+- Настроено защищённое соединение Filebeat → Logstash по TLS 1.3.
+- Проверена индексация тестовых событий Logstash в Elasticsearch.
+- Выполняется финальная настройка маршрутизации логов приложения.
+
+## Дорожная карта проекта
+
+Проект разделён на **8 последовательных этапов**.
+
+| Этап | Направление | Статус |
+|---|---|---|
+| **Stage 1** | Cloud Foundation | Завершён |
+| **Stage 2** | Terraform / Ansible | Завершён |
+| **Stage 3** | FastAPI / Docker / PostgreSQL | Завершён |
+| **Stage 4** | CI/CD | Завершён |
+| **Stage 5** | Observability | Основные компоненты реализованы, финальная отладка |
+| **Stage 6** | Kubernetes | Запланирован |
+| **Stage 7** | Reliability & Incidents | Запланирован |
+| **Stage 8** | AI SRE Assistant | Запланирован |
+
+### Следующие этапы
+
+**Stage 6 — Kubernetes**
+
+Переход к оркестрации контейнеров: Deployments, Services, ConfigMaps, Secrets, масштабирование и управление жизненным циклом приложения.
+
+**Stage 7 — Reliability & Incidents**
+
+Практика инженерной надёжности: SLI/SLO, алертинг, нагрузочное тестирование, моделирование отказов, восстановление сервисов, Runbooks и Postmortems.
+
+**Stage 8 — AI SRE Assistant**
+
+Дополнительный интеллектуальный инструмент для анализа эксплуатационных данных, поиска возможных причин инцидентов и помощи при диагностике.
+
+## Структура репозитория
+
+| Каталог | Содержимое |
+|---|---|
+| `.github/workflows/` | GitHub Actions: CI/CD workflows |
+| `terraform/` | Terraform-конфигурации облачной инфраструктуры |
+| `ansible/` | Inventory, роли, playbooks и файлы конфигурации |
+| `app/` | Исходный код FastAPI, тесты и Dockerfile |
+| `observability/` | Конфигурации Prometheus, Grafana, экспортёров и мониторинга |
+| `.gitignore` | Исключение локальных и чувствительных файлов |
+
+## Инженерные практики
+
+При разработке проекта особое внимание уделяется следующим принципам:
+
+- **Infrastructure as Code** — инфраструктура описывается в коде, а изменения проходят через Terraform Plan.
+- **Idempotency** — повторное применение Ansible не должно вызывать ненужных изменений.
+- **Observability** — состояние сервисов анализируется через метрики, логи и проверки доступности.
+- **Security** — SSH, TLS, ограничение сетевого доступа и отдельное управление секретами.
+- **Version Control** — инфраструктурный и прикладной код версионируется в Git.
+- **Troubleshooting** — ошибки исследуются через системные журналы, API, метрики и диагностику конфигураций.
+- **Cost Awareness** — контролируется стоимость облачной инфраструктуры и использование платных ресурсов.
+
+## Текущий статус
+
+Проект находится в активной разработке.
+
+**Завершены:** Cloud Foundation, Terraform/Ansible, приложение и CI/CD.
+
+**На финальной стадии:** Observability — интеграция ELK, индексация логов и заключительные проверки мониторинга.
+
+**В планах:** Kubernetes, Reliability & Incidents, AI SRE Assistant.
+
+Проект является учебной инфраструктурной лабораторией, а не действующей коммерческой production-системой. Его задача — отработка практик эксплуатации, автоматизации и обеспечения надёжности.
+
+---
+
+**Автор:** Михаил Софьянников
+
+**Направление:** Site Reliability Engineering / DevOps
+
+**Статус проекта:** Active Development
