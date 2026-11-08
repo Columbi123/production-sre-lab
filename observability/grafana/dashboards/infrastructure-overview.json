@@ -338,7 +338,7 @@
             "uid": "prometheus-sre-lab"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - avg by (server) (rate(node_cpu_seconds_total{job=~\"node-control|node-app\",mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg by (server) (rate(node_cpu_seconds_total{job=~\"node-control|node-app|node-logging\",mode=\"idle\"}[5m])))",
           "legendFormat": "{{server}}",
           "range": true,
           "instant": false,
@@ -422,7 +422,7 @@
             "uid": "prometheus-sre-lab"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{job=~\"node-control|node-app\"} / node_memory_MemTotal_bytes{job=~\"node-control|node-app\"}))",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{job=~\"node-control|node-app|node-logging\"} / node_memory_MemTotal_bytes{job=~\"node-control|node-app|node-logging\"}))",
           "legendFormat": "{{server}}",
           "range": true,
           "instant": false,
@@ -506,7 +506,7 @@
             "uid": "prometheus-sre-lab"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - node_filesystem_avail_bytes{job=~\"node-control|node-app\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{job=~\"node-control|node-app\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=~\"node-control|node-app|node-logging\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{job=~\"node-control|node-app|node-logging\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})",
           "legendFormat": "{{server}}",
           "range": true,
           "instant": false,
@@ -590,7 +590,7 @@
             "uid": "prometheus-sre-lab"
           },
           "editorMode": "code",
-          "expr": "sum by (server) (rate(node_network_receive_bytes_total{job=~\"node-control|node-app\",device!~\"lo|veth.*|docker.*|br-.*\"}[5m]))",
+          "expr": "sum by (server) (rate(node_network_receive_bytes_total{job=~\"node-control|node-app|node-logging\",device!~\"lo|veth.*|docker.*|br-.*\"}[5m]))",
           "legendFormat": "{{server}}",
           "range": true,
           "instant": false,

@@ -1,0 +1,15 @@
+{
+  "index_patterns": [
+    "sre-lab-beats-*"
+  ],
+  "priority": 250,
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "sre-lab-beats-7d",
+      "index.number_of_replicas": 0
+    }
+  },
+  "_meta": {
+    "description": "SRE Lab Beats: retention 7 days, single-node Elasticsearch"
+  }
+}

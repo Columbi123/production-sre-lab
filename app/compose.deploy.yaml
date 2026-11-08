@@ -18,6 +18,10 @@ services:
 
   postgres:
     image: postgres:17-alpine
+    command:
+      - postgres
+      - -c
+      - log_min_duration_statement=1000
     env_file:
       - .env
     volumes:

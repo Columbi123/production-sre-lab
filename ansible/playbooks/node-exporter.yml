@@ -1,6 +1,6 @@
 ---
 - name: Установка Node Exporter на серверы SRE Lab
-  hosts: localhost:app
+  hosts: localhost:app:logging
   become: true
 
   tasks:
@@ -14,7 +14,7 @@
 
     - name: Установить ограничение сетевого доступа
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../../observability/node-exporter/systemd/override.conf"
+        src: "{{ playbook_dir }}/../../observability/node-exporter/systemd/{{ 'override-logging.conf' if 'logging' in group_names else 'override.conf' }}"
         dest: /etc/systemd/system/prometheus-node-exporter.service.d/override.conf
         owner: root
         group: root
@@ -46,7 +46,7 @@
 
     - name: Проверить доступность системных метрик
       ansible.builtin.uri:
-        url: http://127.0.0.1:9100/metrics
+        url: "http://{{ '10.10.20.20' if 'logging' in group_names else '127.0.0.1' }}:9100/metrics"
         status_code: 200
         timeout: 10
       register: node_metrics

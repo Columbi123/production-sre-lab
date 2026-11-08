@@ -30,3 +30,6 @@ crash.*.log
 app/.env
 **/__pycache__/
 *.pyc
+
+# Локальные секреты Ansible
+/ansible/secrets/

@@ -1,0 +1,120 @@
+---
+- name: Управление ILM и Index Template для SRE Lab
+  hosts: logging
+  become: true
+  gather_facts: false
+
+  vars_files:
+    - ../secrets/elasticsearch-ilm.vault.yml
+
+  vars:
+    es_url: "https://127.0.0.1:9200"
+    es_ca: "/etc/elasticsearch/certs/http_ca.crt"
+
+    ilm_name: "sre-lab-beats-7d"
+    template_name: "sre-lab-beats-template"
+
+    desired_ilm: >-
+      {{
+        lookup(
+          'file',
+          playbook_dir ~ '/../../observability/elasticsearch/ilm/sre-lab-beats-7d.json'
+        ) | from_json
+      }}
+
+    desired_template: >-
+      {{
+        lookup(
+          'file',
+          playbook_dir ~ '/../../observability/elasticsearch/templates/sre-lab-beats-template.json'
+        ) | from_json
+      }}
+
+  tasks:
+    - name: Получить текущую ILM Policy
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_ilm/policy/{{ ilm_name }}"
+        method: GET
+        headers:
+          Authorization: "ApiKey {{ es_ilm_api_key_encoded }}"
+        ca_path: "{{ es_ca }}"
+        use_proxy: false
+        status_code: [200, 404]
+        return_content: true
+      register: existing_ilm
+      no_log: true
+
+    - name: Применить ILM Policy при необходимости
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_ilm/policy/{{ ilm_name }}"
+        method: PUT
+        headers:
+          Authorization: "ApiKey {{ es_ilm_api_key_encoded }}"
+        ca_path: "{{ es_ca }}"
+        use_proxy: false
+        body_format: json
+        body: "{{ desired_ilm }}"
+        status_code: 200
+      when: >-
+        existing_ilm.status == 404 or
+        existing_ilm.json[ilm_name].policy != desired_ilm.policy
+      no_log: true
+      changed_when: true
+
+
+    - name: Получить текущий Index Template
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_index_template/{{ template_name }}"
+        method: GET
+        headers:
+          Authorization: "ApiKey {{ es_ilm_api_key_encoded }}"
+        ca_path: "{{ es_ca }}"
+        use_proxy: false
+        status_code: [200, 404]
+        return_content: true
+      register: existing_template
+      no_log: true
+
+    - name: Получить настройки существующего шаблона
+      ansible.builtin.set_fact:
+        current_template: >-
+          {{
+            existing_template.json.index_templates[0].index_template
+            if existing_template.status == 200 else {}
+          }}
+
+    - name: Выделить настройки индекса
+      ansible.builtin.set_fact:
+        current_settings: >-
+          {{
+            current_template.get('template', {}).get('settings', {})
+          }}
+
+    - name: Применить Index Template при необходимости
+      ansible.builtin.uri:
+        url: "{{ es_url }}/_index_template/{{ template_name }}"
+        method: PUT
+        headers:
+          Authorization: "ApiKey {{ es_ilm_api_key_encoded }}"
+        ca_path: "{{ es_ca }}"
+        use_proxy: false
+        body_format: json
+        body: "{{ desired_template }}"
+        status_code: 200
+      when: >-
+        existing_template.status == 404 or
+        current_template.get('index_patterns', []) != desired_template.index_patterns or
+        (current_template.get('priority', 0) | int) != (desired_template.priority | int) or
+        current_template.get('_meta', {}) != desired_template._meta or
+        current_settings.get('index.lifecycle.name',
+          current_settings.get('index', {}).get('lifecycle', {}).get('name', '')
+        ) != 'sre-lab-beats-7d' or
+        (current_settings.get('index.number_of_replicas',
+          current_settings.get('index', {}).get('number_of_replicas', -1)
+        ) | int) != 0
+      no_log: true
+      changed_when: true
+
+    - name: Завершить настройку ILM
+      ansible.builtin.debug:
+        msg: "ILM Policy и Index Template проверены."

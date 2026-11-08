@@ -29,6 +29,24 @@
         - Reload systemd
         - Restart Prometheus
 
+    - name: Create Prometheus alert rules directory
+      ansible.builtin.file:
+        path: /etc/prometheus/rules
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install SRE Lab alert rules
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/prometheus/rules/sre-lab-alerts.yml"
+        dest: /etc/prometheus/rules/sre-lab-alerts.yml
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "/usr/bin/promtool check rules %s"
+      notify: Restart Prometheus
+
     - name: Install Prometheus configuration
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../../observability/prometheus/prometheus.yml"

@@ -1,26 +1,60 @@
 
 ---
-- name: Настроить TLS Beats Input для Production SRE Lab
+- name: Настройка Logstash Beats Pipeline для Production SRE Lab
   hosts: logging
   become: true
   gather_facts: false
 
-  tasks:
-    - name: Проверить существующий тестовый pipeline
-      ansible.builtin.stat:
-        path: /etc/logstash/conf.d/10-sre-lab-test.conf
-      register: test_pipeline
+  vars:
+    logstash_beats_config: /etc/logstash/conf.d/20-sre-lab-beats.conf
+    logstash_pipelines_config: /etc/logstash/pipelines.yml
 
-    - name: Убедиться, что тестовый pipeline существует
+    logstash_required_files:
+      - /etc/logstash/certs/logstash.crt
+      - /etc/logstash/certs/logstash.pkcs8.key
+      - /etc/logstash/certs/http_ca.crt
+      - /etc/logstash/conf.d/10-sre-lab-test.conf
+      - /etc/logstash/logstash.keystore
+
+  tasks:
+
+    - name: Проверить наличие TLS и конфигурационных файлов
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ logstash_required_files }}"
+      register: logstash_files
+
+    - name: Проверить обязательные файлы
       ansible.builtin.assert:
         that:
-          - test_pipeline.stat.exists
-          - test_pipeline.stat.isreg
-        fail_msg: "Тестовый pipeline не найден"
+          - item.stat.exists
+        fail_msg: "Отсутствует файл {{ item.item }}"
+      loop: "{{ logstash_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
-    - name: Создать отдельный Beats pipeline
+    - name: Проверить Logstash Keystore
+      ansible.builtin.command:
+        argv:
+          - /usr/share/logstash/bin/logstash-keystore
+          - --path.settings
+          - /etc/logstash
+          - list
+      become_user: logstash
+      register: logstash_keystore_keys
+      changed_when: false
+
+    - name: Проверить наличие Beats API Key
+      ansible.builtin.assert:
+        that:
+          - "'ls_beats_es_api_key' in (logstash_keystore_keys.stdout_lines | map('lower') | list)"
+        fail_msg: >-
+          В Logstash Keystore отсутствует LS_BEATS_ES_API_KEY.
+          Сначала добавьте API Key с правами на sre-lab-beats-*.
+
+    - name: Настроить Beats Input и Elasticsearch Output
       ansible.builtin.copy:
-        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
+        dest: "{{ logstash_beats_config }}"
         owner: root
         group: logstash
         mode: "0640"
@@ -29,12 +63,15 @@
           input {
             beats {
               id => "sre_lab_beats"
+
               host => "10.10.20.20"
               port => 5044
 
               ssl_enabled => true
+
               ssl_certificate => "/etc/logstash/certs/logstash.crt"
               ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
+
               ssl_client_authentication => "none"
             }
           }
@@ -45,7 +82,7 @@
 
               hosts => ["https://127.0.0.1:9200"]
 
-              api_key => "${LS_ES_API_KEY}"
+              api_key => "${LS_BEATS_ES_API_KEY}"
 
               ssl_enabled => true
               ssl_certificate_authorities => [
@@ -55,16 +92,17 @@
 
               data_stream => false
               ilm_enabled => false
+              manage_template => false
 
               index => "sre-lab-beats-%{+YYYY.MM.dd}"
-
             }
           }
+      register: beats_config
+      notify: Restart Logstash
 
-
-    - name: Разделить тестовый и Beats pipelines
+    - name: Настроить два независимых Logstash Pipeline
       ansible.builtin.copy:
-        dest: /etc/logstash/pipelines.yml
+        dest: "{{ logstash_pipelines_config }}"
         owner: root
         group: logstash
         mode: "0644"
@@ -77,125 +115,32 @@
           - pipeline.id: beats-ingest
             path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
             pipeline.workers: 1
+      register: pipelines_config
+      notify: Restart Logstash
 
-- name: Настроить TLS Beats Input для Production SRE Lab
-  hosts: logging
-  become: true
-  gather_facts: false
+    - name: Проверить конфигурацию Logstash
+      ansible.builtin.command:
+        argv:
+          - /usr/share/logstash/bin/logstash
+          - --path.settings
+          - /etc/logstash
+          - --config.test_and_exit
+      become_user: logstash
+      changed_when: false
+      when: beats_config.changed or pipelines_config.changed
 
-  tasks:
-    - name: Проверить существующий тестовый pipeline
-      ansible.builtin.stat:
-        path: /etc/logstash/conf.d/10-sre-lab-test.conf
-      register: test_pipeline
+    - name: Применить изменения Logstash
+      ansible.builtin.meta: flush_handlers
 
-    - name: Убедиться, что тестовый pipeline существует
-      ansible.builtin.assert:
-        that:
-          - test_pipeline.stat.exists
-          - test_pipeline.stat.isreg
-        fail_msg: "Тестовый pipeline не найден"
+    - name: Убедиться, что Logstash запущен
+      ansible.builtin.systemd_service:
+        name: logstash
+        enabled: true
+        state: started
 
-    - name: Создать отдельный Beats pipeline
-      ansible.builtin.copy:
-        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
-        owner: root
-        group: logstash
-        mode: "0640"
-        backup: true
-        content: |
-          input {
-            beats {
-              id => "sre_lab_beats"
-              host => "10.10.20.20"
-              port => 5044
+  handlers:
 
-              ssl_enabled => true
-              ssl_certificate => "/etc/logstash/certs/logstash.crt"
-              ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
-              ssl_client_authentication => "none"
-            }
-          }
-
-          output {
-            stdout {
-              codec => json_lines
-            }
-          }
-
-    - name: Разделить тестовый и Beats pipelines
-      ansible.builtin.copy:
-        dest: /etc/logstash/pipelines.yml
-        owner: root
-        group: logstash
-        mode: "0644"
-        backup: true
-        content: |
-          - pipeline.id: main
-            path.config: "/etc/logstash/conf.d/10-sre-lab-test.conf"
-            pipeline.workers: 1
-
-          - pipeline.id: beats-ingest
-            path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
-            pipeline.workers: 1
-
-- name: Настроить TLS Beats Input для Production SRE Lab
-  hosts: logging
-  become: true
-  gather_facts: false
-
-  tasks:
-    - name: Проверить существующий тестовый pipeline
-      ansible.builtin.stat:
-        path: /etc/logstash/conf.d/10-sre-lab-test.conf
-      register: test_pipeline
-
-    - name: Убедиться, что тестовый pipeline существует
-      ansible.builtin.assert:
-        that:
-          - test_pipeline.stat.exists
-          - test_pipeline.stat.isreg
-        fail_msg: "Тестовый pipeline не найден"
-
-    - name: Создать отдельный Beats pipeline
-      ansible.builtin.copy:
-        dest: /etc/logstash/conf.d/20-sre-lab-beats.conf
-        owner: root
-        group: logstash
-        mode: "0640"
-        backup: true
-        content: |
-          input {
-            beats {
-              id => "sre_lab_beats"
-              host => "10.10.20.20"
-              port => 5044
-
-              ssl_enabled => true
-              ssl_certificate => "/etc/logstash/certs/logstash.crt"
-              ssl_key => "/etc/logstash/certs/logstash.pkcs8.key"
-              ssl_client_authentication => "none"
-            }
-          }
-
-          output {
-            stdout {
-              codec => json_lines
-            }
-          }
-
-    - name: Разделить тестовый и Beats pipelines
-      ansible.builtin.copy:
-        dest: /etc/logstash/pipelines.yml
-        owner: root
-        group: logstash
-        mode: "0644"
-        backup: true
-        content: |
-          - pipeline.id: main
-            path.config: "/etc/logstash/conf.d/10-sre-lab-test.conf"
-            pipeline.workers: 1
-
-          - pipeline.id: beats-ingest
-            path.config: "/etc/logstash/conf.d/20-sre-lab-beats.conf"
-            pipeline.workers: 1
+    - name: Restart Logstash
+      ansible.builtin.systemd_service:
+        name: logstash
+        state: restarted

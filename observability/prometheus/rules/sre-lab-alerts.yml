@@ -1,0 +1,67 @@
+groups:
+  - name: sre-lab-availability
+    rules:
+      - alert: SRENodeExporterDown
+        expr: up{job=~"node-control|node-app|node-logging"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Недоступен Node Exporter на {{ $labels.server }}"
+          description: "Prometheus не может опросить {{ $labels.instance }} более 2 минут."
+
+      - alert: FastAPIUnavailable
+        expr: probe_success{job="blackbox-fastapi"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FastAPI недоступен"
+          description: "Blackbox Exporter не может успешно проверить FastAPI /ready."
+
+      - alert: BlackboxProbeUnavailable
+        expr: up{job="blackbox-fastapi"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Недоступен Blackbox Exporter"
+          description: "Prometheus не может получить результаты HTTP-проверки FastAPI."
+
+      - alert: PostgreSQLUnavailable
+        expr: pg_up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL недоступен"
+          description: "PostgreSQL Exporter не может подключиться к базе данных."
+
+      - alert: PostgreSQLExporterDown
+        expr: up{job="postgresql"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Недоступен PostgreSQL Exporter"
+          description: "Prometheus не может собрать метрики PostgreSQL."
+
+  - name: sre-lab-resources
+    rules:
+      - alert: HighMemoryUsage
+        expr: 100 * (1 - node_memory_MemAvailable_bytes{job=~"node-control|node-app|node-logging"} / node_memory_MemTotal_bytes{job=~"node-control|node-app|node-logging"}) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокое потребление RAM на {{ $labels.server }}"
+          description: "Используется более 90% оперативной памяти в течение 10 минут."
+
+      - alert: RootFilesystemAlmostFull
+        expr: 100 * (node_filesystem_avail_bytes{job=~"node-control|node-app|node-logging",mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{job=~"node-control|node-app|node-logging",mountpoint="/",fstype!~"tmpfs|overlay"}) < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Заканчивается место на {{ $labels.server }}"
+          description: "Свободно менее 15% корневой файловой системы."

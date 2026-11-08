@@ -46,6 +46,14 @@
         mode: "0644"
       notify: Restart Grafana
 
+    - name: Установить Campus Wi-Fi Dashboard
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../observability/grafana/dashboards/campus-wifi-overview.json"
+        dest: /var/lib/grafana/dashboards/sre-lab/campus-wifi-overview.json
+        owner: grafana
+        group: grafana
+        mode: "0644"
+
     - name: Ensure Grafana is running
       ansible.builtin.systemd_service:
         name: grafana-server
